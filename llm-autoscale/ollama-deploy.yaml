@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: llm
+spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      containers:
+      - name: ollama
+        image: ollama/ollama:latest
+        ports:
+        - containerPort: 11434
+        resources:
+          requests:
+            cpu: "250m"  # 0.25 CPU
+            memory: "512Mi"
+            aliyun.com/gpu-mem: "2"  # Request 2GiB GPU memory
+          limits:
+            cpu: "1000m" # 1 CPU
+            memory: "2Gi"
+            aliyun.com/gpu-mem: "2"  # Limit to 2GiB GPU memory

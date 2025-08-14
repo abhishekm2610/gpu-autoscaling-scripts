@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ollama-servicemonitor
+  namespace: monitoring
+  labels:
+    release: prometheus   # Must match your prometheus-operator install!
+spec:
+  selector:
+    matchLabels:
+      app: ollama
+  namespaceSelector:
+    matchNames:
+      - llm
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 5s

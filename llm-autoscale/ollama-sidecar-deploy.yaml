@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "9090"
+    spec:
+      containers:
+      - name: ollama
+        image: ollama/ollama:latest
+        ports:
+        - containerPort: 11434
+      - name: metrics-sidecar
+        image: python:3.11-slim
+        command:
+          - /bin/sh
+          - -c
+          - |
+            pip install flask requests gunicorn && \
+            gunicorn -w 4 -k gthread --threads 10 -b 0.0.0.0:9090 metrics_exporter:app
+        workingDir: /app
+        volumeMounts:
+          - name: metrics-code
+            mountPath: /app
+        ports:
+        - containerPort: 9090
+      volumes:
+      - name: metrics-code
+        configMap:
+          name: metrics-code-configmap
