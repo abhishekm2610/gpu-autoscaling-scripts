@@ -20,8 +20,35 @@ spec:
       containers:
       - name: ollama
         image: ollama/ollama:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 11434
+        env:
+        - name: OLLAMA_HOST
+          value: "0.0.0.0"
+        - name: OLLAMA_MODELS
+          value: "llama3.2:3b"
+        volumeMounts:
+        - name: ollama-data
+          mountPath: /root/.ollama
+        lifecycle:
+          postStart:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - |
+                # Pull model in background so server startup isn't blocked
+                (ollama pull llama3.2:3b > /root/.ollama/pull.log 2>&1 || true) &
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+            aliyun.com/gpu-mem: "2"
+          limits:
+            cpu: "1000m"
+            memory: "2Gi"
+            aliyun.com/gpu-mem: "2"
       - name: metrics-sidecar
         image: python:3.11-slim
         command:
@@ -40,3 +67,5 @@ spec:
       - name: metrics-code
         configMap:
           name: metrics-code-configmap
+      - name: ollama-data
+        emptyDir: {}

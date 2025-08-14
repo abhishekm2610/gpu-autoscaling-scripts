@@ -1,0 +1,28 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ollama-proxy-servicemonitor
+  namespace: monitoring
+  labels:
+    app: ollama-proxy
+    release: prometheus  # Common label for Prometheus to pick it up
+spec:
+  selector:
+    matchLabels:
+      app: ollama-proxy
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 10s
+    # scrapeTimeout: 10s
+    # metricRelabelings:
+    # - sourceLabels: [__name__]
+    #   regex: 'ollama_proxy_.*'
+    #   targetLabel: job
+    #   replacement: 'ollama-proxy'
+    # - sourceLabels: []
+    #   targetLabel: namespace
+    #   replacement: 'llm'
+    # - sourceLabels: []
+    #   targetLabel: service
+    #   replacement: 'ollama-proxy'

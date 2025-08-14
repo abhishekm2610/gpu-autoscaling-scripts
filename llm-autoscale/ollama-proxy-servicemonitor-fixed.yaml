@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ollama-proxy-servicemonitor
+  namespace: prometheus
+  labels:
+    app: ollama-proxy
+    release: kube-prometheus-stack-1754
+spec:
+  namespaceSelector:
+    matchNames:
+    - llm
+  selector:
+    matchLabels:
+      app: ollama-proxy
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s

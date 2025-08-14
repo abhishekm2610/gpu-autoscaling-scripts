@@ -1,0 +1,16 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: ollama-proxy-podmonitor
+  namespace: llm
+  labels:
+    app: ollama-proxy
+spec:
+  selector:
+    matchLabels:
+      app: ollama-proxy
+  podMetricsEndpoints:
+  - port: "9090"
+    path: /metrics
+    interval: 1s
+    scrapeTimeout: 10s

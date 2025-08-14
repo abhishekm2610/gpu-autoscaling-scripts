@@ -1,0 +1,16 @@
+prometheus:
+  url: http://prometheus-operated.prometheus.svc
+
+rules:
+  default: false
+  custom:
+    - seriesQuery: 'ollama_proxy_active_requests{namespace!="",service!=""}'
+      resources:
+        overrides:
+          namespace: { resource: namespace }
+          service:   { resource: service }
+      name:
+        as: "ollama_proxy_active_requests"
+      metricsQuery: >
+        avg without (pod, instance) (<<.Series>>{<<.LabelMatchers>>})
+        or on() vector(0)

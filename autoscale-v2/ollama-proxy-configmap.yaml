@@ -1,0 +1,180 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ollama-proxy-code
+  namespace: ollama
+data:
+  proxy_server.py: |
+    import asyncio
+    import aiohttp
+    from aiohttp import web, ClientSession, ClientTimeout
+    import json
+    import time
+    import os
+    import logging
+    from collections import deque
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("ollama-proxy")
+
+    HOP_BY_HOP_HEADERS = {
+        "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+        "te", "trailers", "transfer-encoding", "upgrade"
+    }
+
+    class OllamaProxy:
+        def __init__(self):
+            # Upstream (e.g. "ollama.ollama.svc.cluster.local:11434")
+            self.ollama_service = os.getenv("OLLAMA_SERVICE", "ollama-service.ollama.svc.cluster.local:11434")
+            self.timeout_secs = float(os.getenv("UPSTREAM_TIMEOUT_SECS", "300"))
+
+            # Labels for Prom metrics (must match your K8s Service for HPA object metric)
+            self.export_namespace = os.getenv("EXPORT_NAMESPACE", "ollama")
+            self.export_service = os.getenv("EXPORT_SERVICE", "ollama-proxy")
+
+            # Simple metrics
+            self._lock = asyncio.Lock()
+            self.active_requests = 0
+            self.total_requests = 0
+            self.total_errors = 0
+            self.request_times = deque(maxlen=200)  # rolling durations
+
+            self.session: ClientSession | None = None
+
+        async def initialize(self):
+            timeout = ClientTimeout(total=self.timeout_secs)
+            self.session = ClientSession(timeout=timeout)
+
+        async def cleanup(self):
+            if self.session:
+                await self.session.close()
+
+        async def _inc_active(self):
+            async with self._lock:
+                self.active_requests += 1
+                self.total_requests += 1
+
+        async def _dec_active(self, had_error: bool, duration: float | None):
+            async with self._lock:
+                if self.active_requests > 0:
+                    self.active_requests -= 1
+                if had_error:
+                    self.total_errors += 1
+                if duration is not None:
+                    self.request_times.append(duration)
+
+        def _p95_latency(self) -> float:
+            if not self.request_times:
+                return 0.0
+            arr = sorted(self.request_times)
+            idx = max(0, int(len(arr) * 0.95) - 1)
+            return arr[idx]
+
+        @staticmethod
+        def _strip_hop_by_hop(headers: aiohttp.typedefs.LooseHeaders):
+            return {k: v for k, v in headers.items() if k.lower() not in HOP_BY_HOP_HEADERS}
+
+        async def proxy_stream(self, request: web.Request) -> web.StreamResponse:
+            """Stream proxy under /proxy/* without buffering whole body."""
+            assert self.session is not None
+            start = time.time()
+            await self._inc_active()
+            had_error = False
+            try:
+                tail = request.match_info.get("path", "")
+                if not tail.startswith("/"):
+                    tail = "/" + tail
+                upstream = f"http://{self.ollama_service}{tail}"
+
+                fwd_headers = {
+                    k: v for k, v in request.headers.items()
+                    if k.lower() not in HOP_BY_HOP_HEADERS and k.lower() not in {"host", "content-length"}
+                }
+
+                async with self.session.request(
+                    method=request.method,
+                    url=upstream,
+                    headers=fwd_headers,
+                    data=request.content  # stream request body
+                ) as resp:
+                    out = web.StreamResponse(status=resp.status, headers=self._strip_hop_by_hop(resp.headers))
+                    await out.prepare(request)
+                    async for chunk in resp.content.iter_chunked(64 * 1024):
+                        await out.write(chunk)
+                    await out.write_eof()
+                    await self._dec_active(False, time.time() - start)
+                    return out
+
+            except Exception as e:
+                had_error = True
+                await self._dec_active(True, time.time() - start)
+                logger.exception("Proxy error")
+                return web.Response(
+                    text=json.dumps({"error": str(e)}),
+                    status=502,
+                    content_type="application/json"
+                )
+
+        async def metrics(self, request: web.Request) -> web.Response:
+            """Prometheus exposition; always emits active_requests, including 0, with namespace/service labels."""
+            async with self._lock:
+                active = self.active_requests
+                total = self.total_requests
+                errors = self.total_errors
+                p95 = self._p95_latency()
+
+                ns = self.export_namespace
+                svc = self.export_service
+
+            lines = [
+                "# HELP ollama_proxy_active_requests Currently active in-flight proxied requests",
+                "# TYPE ollama_proxy_active_requests gauge",
+                f'ollama_proxy_active_requests{{namespace="{ns}",service="{svc}"}} {active}',
+                "# HELP ollama_proxy_total_requests Total proxied requests since start",
+                "# TYPE ollama_proxy_total_requests counter",
+                f'ollama_proxy_total_requests{{namespace="{ns}",service="{svc}"}} {total}',
+                "# HELP ollama_proxy_total_errors Total proxied request errors since start",
+                "# TYPE ollama_proxy_total_errors counter",
+                f'ollama_proxy_total_errors{{namespace="{ns}",service="{svc}"}} {errors}',
+                "# HELP ollama_proxy_request_latency_seconds_p95 Rolling p95 latency over last 200 requests",
+                "# TYPE ollama_proxy_request_latency_seconds_p95 gauge",
+                f'ollama_proxy_request_latency_seconds_p95{{namespace="{ns}",service="{svc}"}} {p95:.6f}',
+                ""
+            ]
+            return web.Response(text="\n".join(lines), content_type="text/plain; version=0.0.4")
+
+        async def health(self, request: web.Request) -> web.Response:
+            return web.Response(text="OK", status=200)
+
+    proxy = OllamaProxy()
+
+    async def init_app():
+        await proxy.initialize()
+        app = web.Application()
+
+        # Register /health and /metrics BEFORE proxy route
+        app.router.add_get("/health", proxy.health)
+        app.router.add_get("/metrics", proxy.metrics)
+
+        # Only proxy under /proxy/*
+        app.router.add_route("*", "/proxy{path:.*}", proxy.proxy_stream)
+
+        return app
+
+    if __name__ == "__main__":
+        async def main():
+            app = await init_app()
+            app.on_cleanup.append(lambda app: proxy.cleanup())
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, "0.0.0.0", 8080)
+            await site.start()
+            logger.info("Ollama proxy started on :8080 → upstream %s", proxy.ollama_service)
+            try:
+                await asyncio.Future()
+            except KeyboardInterrupt:
+                pass
+            finally:
+                await runner.cleanup()
+
+        asyncio.run(main())

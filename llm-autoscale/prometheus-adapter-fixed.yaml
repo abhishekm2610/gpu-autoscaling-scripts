@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-adapter
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/instance: prometheus-adapter
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: prometheus-adapter
+    app.kubernetes.io/part-of: prometheus-adapter
+    app.kubernetes.io/version: v0.12.0
+data:
+  config.yaml: |
+    rules:
+    # Original dummy rule (keeping for compatibility)
+    - seriesQuery: 'dummy_inflight_requests{namespace!=""}'
+      resources:
+        overrides:
+          namespace:
+            resource: "namespace"
+          pod:
+            resource: "pod"
+      name:
+        matches: "dummy_inflight_requests"
+        as: "dummy_inflight_requests"
+      metricsQuery: 'avg(dummy_inflight_requests{<<.LabelMatchers>>}) by (namespace, pod)'
+
+    # Ollama proxy rules
+    - seriesQuery: 'ollama_proxy_active_requests'
+      resources:
+        template: "<<.Resource>>"
+      name:
+        matches: "^ollama_proxy_active_requests"
+        as: "ollama_proxy_active"
+      metricsQuery: 'ollama_proxy_active_requests'
+
+    - seriesQuery: 'ollama_proxy_utilization_percent'
+      resources:
+        template: "<<.Resource>>"
+      name:
+        matches: "^ollama_proxy_utilization_percent"
+        as: "ollama_proxy_utilization"
+      metricsQuery: 'ollama_proxy_utilization_percent'
+
+    - seriesQuery: 'ollama_proxy_requests_per_minute'
+      resources:
+        template: "<<.Resource>>"
+      name:
+        matches: "^ollama_proxy_requests_per_minute"
+        as: "ollama_proxy_requests_rate"
+      metricsQuery: 'ollama_proxy_requests_per_minute'

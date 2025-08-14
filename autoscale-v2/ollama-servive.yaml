@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: ollama-service
-  namespace: llm
+  namespace: ollama
   labels:
     app: ollama
 spec:

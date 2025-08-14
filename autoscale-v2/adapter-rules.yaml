@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-metrics-config
+  namespace: ollama
+data:
+  config.yaml: |
+    rules:
+    - seriesQuery: 'ollama_proxy_active_requests{namespace!="",service!=""}'
+        resources:
+          overrides:
+            namespace:
+              resource: namespace
+            service:
+              resource: service
+      name:
+        matches: "ollama_proxy_active_requests"
+        as: ollama_proxy_active_requests"
+      metricsQuery: 'avg(ollama_proxy_active_requests{<<.LabelMatchers>>}) by (namespace, service)'

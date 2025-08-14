@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adapter-config
+  namespace: monitoring
+data:
+  config.yaml: |
+    rules:
+    # Rule for ollama proxy active requests (simplified)
+    - seriesQuery: 'ollama_proxy_active_requests'
+      seriesFilters: []
+      resources:
+        template: "<<.Resource>>"
+      name:
+        matches: "^ollama_proxy_active_requests"
+        as: "ollama_proxy_active"
+      metricsQuery: 'ollama_proxy_active_requests'
+
+    # Rule for ollama proxy utilization
+    - seriesQuery: 'ollama_proxy_utilization_percent'
+      seriesFilters: []
+      resources:
+        template: "<<.Resource>>"
+      name:
+        matches: "^ollama_proxy_utilization_percent"
+        as: "ollama_proxy_utilization"
+      metricsQuery: 'ollama_proxy_utilization_percent'
+
+    # Rule for ollama proxy requests per minute
+    - seriesQuery: 'ollama_proxy_requests_per_minute'
+      seriesFilters: []
+      resources:
+        template: "<<.Resource>>"
+      name:
+        matches: "^ollama_proxy_requests_per_minute"
+        as: "ollama_proxy_requests_rate"
+      metricsQuery: 'ollama_proxy_requests_per_minute'
