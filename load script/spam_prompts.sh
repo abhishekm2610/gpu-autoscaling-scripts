@@ -4,7 +4,7 @@
 
 PROMPTS_FILE="${1:-truthfulqa_prompts_repo.txt}"
 MODEL="llama3.2:3b"
-URL="http://localhost:18080/proxy/api/generate"
+URL="http://localhost:28080/proxy/api/generate"
 CONCURRENCY=100
 REQUESTS=500
 LOGFILE="spam_outputs.log"

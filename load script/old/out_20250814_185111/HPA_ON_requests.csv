@@ -1,0 +1,1 @@
+request_id,start_iso,end_iso,latency_ms,http_code,prompt_tokens,completion_tokens,total_tokens,eval_count,eval_ms,prompt_eval_count,prompt_eval_ms,total_ms

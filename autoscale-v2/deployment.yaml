@@ -21,9 +21,9 @@ spec:
         - containerPort: 11434
         env:
         - name: OLLAMA_MODELS
-          value: "llama3.2:3b"
+          value: /root/.ollama
         volumeMounts:
-        - name: ollama-data
+        - name: ollama-storage
           mountPath: /root/.ollama
         lifecycle:
           postStart:
@@ -33,16 +33,19 @@ spec:
               - -c
               - |
                 # Run ollama pull in background so container startup isn't blocked.
-                (ollama pull llama3.2:3b > /root/.ollama/pull.log 2>&1 || true) &
+                (ollama list > /root/.ollama/pull.log 2>&1 || true) &
         resources:
           requests:
-            cpu: "250m"  # 0.25 CPU
+            cpu: "250m"
             memory: "512Mi"
-            aliyun.com/gpu-mem: "2"  # Request 2GiB GPU memory
+            # aliyun.com/gpu-mem: "2"
+            nvidia.com/gpu: "1"
           limits:
-            cpu: "1000m" # 1 CPU
+            cpu: "1000m"
             memory: "2Gi"
-            aliyun.com/gpu-mem: "2"  # Limit to 2GiB GPU memory
+            # aliyun.com/gpu-mem: "2"
+            nvidia.com/gpu: "1"
       volumes:
-      - name: ollama-data
-        emptyDir: {}
+      - name: ollama-storage
+        persistentVolumeClaim:
+          claimName: ollama-pvc
